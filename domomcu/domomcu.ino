@@ -21,6 +21,15 @@ typedef struct
 
 Intterupt intterupt[3];
 
+typedef struct
+{
+    String id;
+    unsigned long time = 0;
+    String actions;
+} SleepQueue;
+
+SleepQueue sleepQueue[10];
+
 const char* APssid = "DOMOMCU_01";
 const char* APpassword = "domomcuIsGreat";
 
@@ -370,6 +379,59 @@ void loopTriggerIntterupt() {
   }
 }
 
+void triggerSleep() {
+  int count = sizeof(sleepQueue)/sizeof(sleepQueue[0]);
+  for (int i = 0; i < count; i++){
+      if (sleepQueue[i].time != 0 && sleepQueue[i].time < millis()) {
+        sleepQueue[i].time = 0;
+        Serial.println("Do sleep action");
+        actionsParse(sleepQueue[i].actions);
+      }
+  }
+}
+
+bool addSleep(String id, unsigned long time, String actions) {
+  int count = sizeof(sleepQueue)/sizeof(sleepQueue[0]);
+  int addTo = -1;
+  if (id != "") {
+    for (int i = 0; i < count; i++){
+      if (id == sleepQueue[i].id) {
+        addTo = i;
+        break;
+      }
+    }  
+  }
+  if (addTo == -1) {
+    for (int i = 0; i < count; i++){
+      if (sleepQueue[i].time == 0) {
+        addTo = i;
+        break;
+      }
+    }
+  }
+  if (addTo != -1) {
+    sleepQueue[addTo].id = id;
+    sleepQueue[addTo].time = time;
+    sleepQueue[addTo].actions = actions;
+  }    
+  return addTo != -1;
+}
+
+void routeSleep() {
+  Serial.println("Route sleep");
+  if (!server.hasArg("actions") || !server.hasArg("millisec")) {
+    server.send(400, "text/plain", "Sleep parameter missing. Please provide actions and millisec");
+  }  
+  else {
+    String id = server.hasArg("id") ? "" : server.arg("id");
+    if (addSleep(id, millis()+server.arg("millisec").toInt(), server.arg("actions"))) {
+      server.send(200, "text/plain", "DONE");  
+    }
+    else {
+      server.send(200, "text/plain", "SLEEP QUEUE FULL");
+    }
+  }  
+}
 
 void actionsParse(String actions) {
   int startPos = 0;
@@ -386,7 +448,7 @@ void actionsParse(String actions) {
   } while (tokenPos != -1 && startPos < actions.length());
 }
 
-Routes routes[9] = {
+Routes routes[10] = {
   {"/wifi/config", routeWifiConfig},
   {"/rcswitch/send", routeRcswitchSend},
   {"/gpio/read", routeGpioRead},
@@ -395,7 +457,8 @@ Routes routes[9] = {
   {"/startup/url", routeStartupUrl},
   {"/attach/interrupt", routeAttachInterrupt},
   {"/startup/actions", routeStartupActions},
-  {"/update", routeUpdate}
+  {"/update", routeUpdate},
+  {"/sleep", routeSleep}
 };
 
 
@@ -447,4 +510,5 @@ void setup() {
 void loop() {
   server.handleClient();
   loopTriggerIntterupt();
+  triggerSleep();
 }
