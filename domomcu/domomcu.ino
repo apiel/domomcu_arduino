@@ -36,13 +36,18 @@ const char* APpassword = "domomcuIsGreat";
 String startupUrlFile = "/startup_url";
 String startupActionsFile = "/startup_actions";
 String wifiFile = "/wifi";
-    
+String tcpFile = "/tcp";
+
+WiFiClient client;
+
 ESP8266WebServer server(80);
 
 RCSwitch mySwitch = RCSwitch();
 
 void actionsParse(String actions);
 void action();
+void startupTcp();
+void startupUrl();
 
 String urlencode(String str)
 {
@@ -102,10 +107,10 @@ bool loadWifi() {
         String _password = server.arg("password");
         Serial.print("Connect to WiFi: ");  
         Serial.println(_ssid);          
-        char * ssid;
-        char * password;
-        _ssid.toCharArray(ssid, _ssid.length());
-        _password.toCharArray(password, _password.length());
+        char ssid[128];
+        char password[128];
+        _ssid.toCharArray(ssid, 128);
+        _password.toCharArray(password, 128);
         WiFi.begin(ssid, password);
         connected = isConnectedWifi();
       }
@@ -116,6 +121,8 @@ bool loadWifi() {
   if (connected) {
       Serial.println("\nConnected to WiFi.");
       Serial.println(WiFi.localIP());
+      startupUrl();
+      startupTcp();
   }   
   return connected;
 }
@@ -138,6 +145,31 @@ bool saveWifiConfig(String ssid, String password) {
   Serial.println("Save wifi config file.");
   String wifiConfig = "ssid=" + urlencode(ssid) + "&password=" + urlencode(password);
   return saveFile(wifiFile, wifiConfig);
+}
+
+void startupTcp() {
+  Serial.println("Load startup tcp.");
+  File configFile = SPIFFS.open(tcpFile, "r");
+  if (!configFile) {
+    Serial.println("Failed to open startup tcp config file");
+  }
+  else {
+      String _host = configFile.readString();
+      char host[128];
+      _host.toCharArray(host, 128);      
+      Serial.println(host);
+
+      if(client.available()){
+        client.stop();
+      }
+      if (!client.connect(host, 8888)) {
+        Serial.println("connection failed");
+      }  
+      else {
+        Serial.println("connection success");
+        client.print("yoyoyo");
+      }       
+  }
 }
 
 void callUrl(String url) {
@@ -433,6 +465,20 @@ void routeSleep() {
   }  
 }
 
+void routeTcp() {
+  Serial.println("Route tcp");
+  if (!server.hasArg("host")) {
+    server.send(400, "text/plain", "Tcp parameter missing. Please provide host");
+  }
+  else {
+    String host = server.arg("host");
+    Serial.println(host);
+    saveFile(tcpFile, host);
+    server.send(200, "text/plain", "DONE");
+  }
+  startupTcp();
+}
+
 void actionsParse(String actions) {
   int startPos = 0;
   int tokenPos;
@@ -448,7 +494,7 @@ void actionsParse(String actions) {
   } while (tokenPos != -1 && startPos < actions.length());
 }
 
-Routes routes[10] = {
+Routes routes[11] = {
   {"/wifi/config", routeWifiConfig},
   {"/rcswitch/send", routeRcswitchSend},
   {"/gpio/read", routeGpioRead},
@@ -458,7 +504,8 @@ Routes routes[10] = {
   {"/attach/interrupt", routeAttachInterrupt},
   {"/startup/actions", routeStartupActions},
   {"/update", routeUpdate},
-  {"/sleep", routeSleep}
+  {"/sleep", routeSleep},
+  {"/tcp", routeTcp}
 };
 
 
@@ -481,7 +528,7 @@ void setupServerRoutes(){
   }
 }
 
-void setup() {
+void setup() {  
   Serial.begin(115200);
   
   if (!SPIFFS.begin()) {
@@ -501,8 +548,8 @@ void setup() {
   server.onNotFound(routeNotFound);
   server.begin();
   Serial.println("HTTP server started");  
-  
-  startupUrl();
+
+  //startupUrl();
 
   //actionsParse("action=/rcswitch/send&pin=5&code=283955&bit=24\naction=/rcswitch/send&pin=5&code=283964&bit=24\naction=/rcswitch/send&pin=5&code=283955&bit=24\naction=/rcswitch/send&pin=5&code=283964&bit=24\n");  
 }
@@ -511,4 +558,10 @@ void loop() {
   server.handleClient();
   loopTriggerIntterupt();
   triggerSleep();
+
+  if(client.available()){
+    String line = client.readStringUntil('\r');
+    Serial.print(line);
+    actionsParse(line);
+  }
 }
