@@ -205,16 +205,20 @@ void startupUrl() {
   }
 }
 
-void startupActions() {
-  Serial.println("Load startup actions.");
-  File configFile = SPIFFS.open(startupActionsFile, "r");
+void callActionsFile(String actionsFile) {
+  Serial.println("Load actions file: " + actionsFile);
+  File configFile = SPIFFS.open(actionsFile, "r");
   if (!configFile) {
-    Serial.println("Failed to open startup actions config file");
+    Serial.println("Failed to open actions file: " + actionsFile);
   }
   else {
       String actions = configFile.readString();
       actionsParse(actions);
   }  
+}
+
+void startupActions() {
+  callActionsFile(startupActionsFile);
 }
 
 void loadWifiAP() {
@@ -400,6 +404,20 @@ void routeStartupActions() {
     server.send(200, "text/plain", "DONE");
   }
 }
+
+void routeSaveFile() {
+  Serial.println("Save file");
+  if (!server.hasArg("file") || !server.hasArg("content")) {
+    server.send(400, "text/plain", "Save file parameter missing. Please provide file and content");
+  }  
+  else {
+    String content = server.arg("content");
+    String file = server.arg("file");
+    saveFile(file, content);
+    server.send(200, "text/plain", "DONE");
+  }  
+}
+
 void loopTriggerIntterupt() {
   for (int i = 0; i < 3; i++){
     if (intterupt[i].trigger) {
@@ -407,6 +425,7 @@ void loopTriggerIntterupt() {
       Serial.print("Trigger: ");
       Serial.println(intterupt[i].url);    
       callUrl(intterupt[i].url);
+      callActionsFile("intterupt_actions_" + i);
     }
   }
 }
@@ -494,15 +513,16 @@ void actionsParse(String actions) {
   } while (tokenPos != -1 && startPos < actions.length());
 }
 
-Routes routes[11] = {
-  {"/wifi/config", routeWifiConfig},
+Routes routes[12] = {
+  {"/wifi/config", routeWifiConfig}, // could be deprecated
   {"/rcswitch/send", routeRcswitchSend},
   {"/gpio/read", routeGpioRead},
   {"/gpio/write", routeGpioWrite},
   {"/analog/read", routeAnalogRead},
   {"/startup/url", routeStartupUrl},
   {"/attach/interrupt", routeAttachInterrupt},
-  {"/startup/actions", routeStartupActions},
+  {"/startup/actions", routeStartupActions}, // could be deprecated
+  {"/save/file", routeSaveFile},
   {"/update", routeUpdate},
   {"/sleep", routeSleep},
   {"/tcp", routeTcp}
