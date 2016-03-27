@@ -393,6 +393,22 @@ void routeUpdate() {
   }  
 }
 
+void routeReadFile() {
+  Serial.println("Route read file.");
+  String filename = "index.html";
+  if (server.hasArg("file")) {
+    filename = server.arg("file");
+  }
+  File file = SPIFFS.open(filename, "r");
+  if (!file) {
+      server.send(200, "text/plain", "DOMOMCU");
+  }
+  else {
+      String content = file.readString();
+      server.send(200, "text/html", content);
+  }
+}
+
 void routeStartupActions() {
   Serial.println("Startup Actions");
   if (!server.hasArg("actions")) {
@@ -513,7 +529,8 @@ void actionsParse(String actions) {
   } while (tokenPos != -1 && startPos < actions.length());
 }
 
-Routes routes[12] = {
+Routes routes[13] = {
+  {"/", routeReadFile},
   {"/wifi/config", routeWifiConfig}, // could be deprecated
   {"/rcswitch/send", routeRcswitchSend},
   {"/gpio/read", routeGpioRead},
